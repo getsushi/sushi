@@ -1,0 +1,30 @@
+PRIYA RAMANATHAN
+priya.ramanathan@examplemail.test | +1 415 555 0142 | San Francisco, CA, USA
+linkedin.com/in/priya-ramanathan-example | github.com/priya-example
+
+SUMMARY
+Platform engineering leader with 11 years building distributed systems and, more
+recently, LLM-backed developer tooling. Built and ran teams of up to 24 engineers.
+
+EXPERIENCE
+
+NIMBUSFLOW INC | Director of Engineering, Developer Platform | Mar 2021 - Present
+- Own platform strategy and the build-vs-buy decisions for internal tooling.
+- Grew the platform group from 6 to 24 engineers across three time zones.
+- Shipped an LLM code-review assistant now used on 90% of merge requests.
+- Cut median CI time from 22 minutes to 6 minutes.
+
+HELIOSTACK | Senior Engineering Manager | Jun 2017 - Feb 2021
+- Led two teams covering Kubernetes infrastructure and the public API.
+- Drove the migration from a monolith to 40+ services.
+
+QUILLBASE | Senior Software Engineer | Aug 2014 - May 2017
+- Built the billing pipeline handling $200M annually in Python and Go.
+
+EDUCATION
+MSc Computer Science, Carnegie Mellon University, 2014
+BTech Electrical Engineering, IIT Madras, 2012
+
+SKILLS
+Python, Go, Kubernetes, Terraform, AWS, LLM applications, RAG, distributed systems,
+observability, platform engineering, team leadership, hiring

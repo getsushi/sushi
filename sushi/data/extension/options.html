@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Sushi</title>
+  <style>
+    body {
+      margin: 0; padding: 28px 30px;
+      background: #FBFAF5; color: #252525;
+      font: 400 14px/1.5 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+      max-width: 560px;
+    }
+    h1 { font-size: 20px; margin: 0 0 4px; font-weight: 600; letter-spacing: -.01em; }
+    p.sub { color: #6B6B63; margin: 0 0 22px; }
+    label { display: block; font-weight: 600; margin: 16px 0 6px; }
+    input {
+      width: 100%; box-sizing: border-box; padding: 9px 11px;
+      border: 1px solid #DFDDD2; border-radius: 9px; background: #fff;
+      font: inherit; color: inherit;
+    }
+    input:focus { outline: 2px solid #C6462F; outline-offset: -1px; border-color: transparent; }
+    .row { display: flex; gap: 10px; align-items: center; margin-top: 22px; }
+    button {
+      padding: 9px 16px; border-radius: 999px; border: 1px solid #DFDDD2;
+      background: #fff; font: inherit; font-weight: 600; cursor: pointer;
+    }
+    button.primary { background: #252525; color: #F7F8EF; border-color: #252525; }
+    #said { margin-top: 16px; color: #6B6B63; min-height: 20px; }
+    .note { margin-top: 26px; padding-top: 18px; border-top: 1px solid #EDEBE1; color: #6B6B63; }
+  </style>
+</head>
+<body>
+  <h1>🍣 Sushi</h1>
+  <p class="sub">Where this extension should find the app.</p>
+
+  <p>Sushi filled these in when it generated the extension. You only need to
+     change them if the app reported a different port afterwards — Settings →
+     Files in Sushi shows the current one.</p>
+
+  <label for="port">Port</label>
+  <input id="port" type="number" min="1" max="65535" placeholder="8765">
+
+  <label for="token">Token</label>
+  <input id="token" type="password" autocomplete="off" spellcheck="false">
+
+  <div class="row">
+    <button class="primary" id="save">Save</button>
+    <button id="test">Test the connection</button>
+  </div>
+  <div id="said"></div>
+
+  <p class="note">The token is what stops any page you happen to visit from
+     telling Sushi to fill a form. Treat it like a password: it belongs to
+     this machine, and if it gets out, press <em>Issue a new token</em> in
+     Sushi and generate the extension again.</p>
+
+  <script src="config.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

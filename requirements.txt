@@ -1,0 +1,15 @@
+PyQt6>=6.6
+browser-use>=0.13
+anthropic>=0.40
+openai>=1.50
+pdfplumber>=0.11
+pypdf>=5.0
+python-docx>=1.1
+reportlab>=4.0
+# Matching questions by meaning rather than wording — see sushi/embed.py.
+# Optional on purpose: without them the answer bank falls back to matching
+# on words, which works and is measurably deafer. Deliberately not torch,
+# which is 2.5GB of CUDA wheels for a 24MB model that runs fine on a CPU.
+onnxruntime>=1.17
+tokenizers>=0.15
+numpy>=1.24

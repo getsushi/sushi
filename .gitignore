@@ -1,0 +1,24 @@
+# Bytecode and test caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local run logs
+*.log
+
+# Secrets — provider keys live in .env_amm / .env, never in the repo
+.env
+.env_amm
+**/.env_amm
+
+# Stray PDF written to the literal filename "None" by an early reportlab bug
+None
+
+# Virtualenvs
+.venv/
+venv/
+
+# Generated: QA screenshots and the rendered proposal document
+tools/qa/shots/
+docs/*.docx
+docs/*.pdf
