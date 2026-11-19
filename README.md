@@ -12,6 +12,7 @@ history stay on your computer.
 ![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-555)
 ![Local-first](https://img.shields.io/badge/data-stays%20local-555)
+![Licence: MIT](https://img.shields.io/badge/licence-MIT-green)
 
 <img src="docs/media/insane-mode.gif" alt="Insane Mode filling applications one by one, with questions it cannot answer collected on Home" width="900">
 
@@ -20,6 +21,25 @@ history stay on your computer.
 </div>
 
 ---
+
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Configuration](#configuration)
+- [Where your data lives](#where-your-data-lives)
+- [How it works](#how-it-works)
+- [Privacy and safety](#privacy-and-safety)
+- [Development](#development)
+- [Troubleshooting](#troubleshooting)
+- [Known limitations](#known-limitations)
+- [Contributing](#contributing)
+- [Security](#security)
+- [Licence](#licence)
+- [Credits](#credits)
 
 ## Overview
 
@@ -92,17 +112,50 @@ shows what each model costs before you choose one.
 | Claude Haiku | Paid | About $0.34 |
 | Ollama (local) | None | Free; nothing leaves your computer |
 
-## Getting started
+## Requirements
+
+- Python 3.11 or later, with `venv` or `virtualenv`
+- Windows, macOS or Linux
+- About 1 GB of free disk space for dependencies and the Chromium browser
+- A model to drive the browser: a free or paid API key, Claude Code, or a
+  local Ollama install (see [Model costs](#model-costs))
+
+## Installation
 
 ```bash
 git clone https://github.com/ammark1234/sushi.git
 cd sushi
+python -m venv .venv
+```
+
+Activate the environment:
+
+```bash
+# Windows
+.venv\Scripts\activate
+# macOS / Linux
+source .venv/bin/activate
+```
+
+Install the dependencies and the browser:
+
+```bash
 pip install -r requirements.txt
 python -m playwright install chromium
+```
+
+`onnxruntime`, `tokenizers` and `numpy` are optional. Without them, the answer
+memory matches questions by their words instead of their meaning.
+
+## Usage
+
+```bash
 python main.py
 ```
 
-Add your CV, choose a model, and your matches start to appear.
+On first run, add your CV and choose a model; matches start to appear once
+the first scan finishes. If a `.venv` folder exists, `main.py` switches to it
+on its own, so you can launch with any Python.
 
 ## Privacy and safety
 
@@ -148,8 +201,7 @@ Jobs are read from Greenhouse, Lever, Ashby, Workable, SmartRecruiters,
 Recruitee, Workday, Personio, Teamtailor, BambooHR, Breezy, Pinpoint and
 Rippling through their public JSON APIs, so no scraping is involved.
 
-<details>
-<summary><b>Configuration, project layout and tests</b></summary>
+## Configuration
 
 ### Credentials
 
@@ -158,7 +210,22 @@ file (`OPENAI_API_KEY`, `OPENAI_BASE_URL`, `SUSHI_MODEL`, …), then environment
 variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `AZURE_OPENAI_API_KEY`). The
 app shows which source it used, never the key itself.
 
-### Layout
+Never commit a `.env` file. It is already listed in `.gitignore`.
+
+## Where your data lives
+
+Sushi keeps nothing next to the code that belongs to you.
+
+| What | Where |
+|---|---|
+| App database, browser profile, logs | Windows: `%LOCALAPPDATA%\sushi`<br>macOS: `~/Library/Application Support/sushi`<br>Linux: `$XDG_DATA_HOME/sushi` (default `~/.local/share/sushi`) |
+| CVs, cover letters, tailored resumes | `~/Documents/Sushi` (can be moved in Settings) |
+
+To start completely fresh, close Sushi and delete the app data folder.
+
+## Development
+
+### Project layout
 
 ```
 main.py                 entry point
@@ -178,7 +245,7 @@ tools/                  developer launchers (a clean first run, board import)
 docs/                   documentation and media
 ```
 
-### Tests
+### Running tests
 
 ```bash
 python -m pytest tests
@@ -188,7 +255,17 @@ End-to-end suites live in `tools/qa/` and run from the repository root with
 `PYTHONPATH=.`, for example `python tools/qa/qa_fields.py`, which checks that
 every kind of form field is filled correctly.
 
-</details>
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `No module named 'PyQt6'` or `'browser_use'` | The dependencies are not installed for the Python you used. Create `.venv` and install `requirements.txt` as shown in [Installation](#installation). |
+| `No module named venv` | Your Python was built without `venv`. Run `pip install virtualenv`, then `python -m virtualenv .venv`. |
+| `database disk image is malformed` on start-up | The app database is damaged. Close Sushi, copy `sushi.db` from the app data folder somewhere safe, then delete it. Sushi creates a new one on next start; you will need to add your CV again. |
+| The browser never opens | Run `python -m playwright install chromium` inside the virtual environment. |
+
+The log file `sushi.log` in the app data folder records every start-up and
+error, and is the first thing to attach to a bug report.
 
 ## Known limitations
 
@@ -197,6 +274,18 @@ every kind of form field is filled correctly.
 - **Title matching is word-based**, so an unusually named role can be missed.
 
 ## Contributing
+
+Contributions are welcome. To get started:
+
+1. Fork the repository and create a branch from `main`.
+2. Set up a virtual environment as in [Installation](#installation).
+3. Make your change, and add or update tests in `tests/`.
+4. Run `python -m pytest tests` and make sure it passes.
+5. Open a pull request that says what changed and why.
+
+For bugs, open an [issue](https://github.com/ammark1234/sushi/issues) with your
+operating system, Python version, the steps to reproduce, and the relevant part
+of `sushi.log`. Remove any personal details from the log first.
 
 The easiest way to contribute is to add a job site. Each one is a small
 function in [`sushi/ats.py`](sushi/ats.py): copy `_greenhouse`, register it in
@@ -209,9 +298,15 @@ Other welcome contributions:
 - Cover letter and resume templates
 - Anything in [issues](https://github.com/ammark1234/sushi/issues)
 
+## Security
+
+Please do not report security problems in a public issue. Use GitHub's
+**Report a vulnerability** button on the repository's Security tab, so the
+problem can be fixed before it is made public.
+
 ## Licence
 
-Not chosen yet. Until a licence is added, all rights are reserved.
+Sushi is released under the [MIT License](LICENSE).
 
 ## Credits
 
