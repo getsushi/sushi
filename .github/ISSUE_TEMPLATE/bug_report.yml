@@ -1,0 +1,60 @@
+name: Bug report
+description: Something in Sushi does not work as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please remove names, emails, phone numbers and API keys from anything you paste.
+        Security problems go through the Security tab, not here.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Matches
+        2. Click Apply on a Greenhouse job
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Sushi version or commit
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [Windows, macOS, Linux]
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: "3.12.7"
+  - type: input
+    id: model
+    attributes:
+      label: Model provider
+      placeholder: "Groq, Ollama, Claude Code..."
+  - type: input
+    id: ats
+    attributes:
+      label: Job site or ATS (if relevant)
+      placeholder: "Greenhouse, Workday..."
+  - type: textarea
+    id: log
+    attributes:
+      label: Log extract
+      description: The relevant part of sushi.log from the app data folder, with personal details removed.
+      render: text

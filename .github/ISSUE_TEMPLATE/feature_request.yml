@@ -1,0 +1,19 @@
+name: Feature request
+description: Suggest a new job site, form field or feature
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that Sushi does not support?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Suggested solution
+  - type: input
+    id: example
+    attributes:
+      label: Example job link (if it is about a job site)

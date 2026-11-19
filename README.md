@@ -123,7 +123,7 @@ shows what each model costs before you choose one.
 ## Installation
 
 ```bash
-git clone https://github.com/ammark1234/sushi.git
+git clone https://github.com/getsushi/sushi.git
 cd sushi
 python -m venv .venv
 ```
@@ -283,7 +283,7 @@ Contributions are welcome. To get started:
 4. Run `python -m pytest tests` and make sure it passes.
 5. Open a pull request that says what changed and why.
 
-For bugs, open an [issue](https://github.com/ammark1234/sushi/issues) with your
+For bugs, open an [issue](https://github.com/getsushi/sushi/issues) with your
 operating system, Python version, the steps to reproduce, and the relevant part
 of `sushi.log`. Remove any personal details from the log first.
 
@@ -296,7 +296,7 @@ Other welcome contributions:
 - More job-feed sites in [`sushi/sources.py`](sushi/sources.py)
 - Form fields Sushi cannot fill yet: add a case to `tools/qa/qa_fields.py`, then fix it
 - Cover letter and resume templates
-- Anything in [issues](https://github.com/ammark1234/sushi/issues)
+- Anything in [issues](https://github.com/getsushi/sushi/issues)
 
 ## Security
 
