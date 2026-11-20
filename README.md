@@ -4,7 +4,7 @@
 
 # Sushi
 
-**Upload your CV once. Sushi finds jobs that fit and fills in the applications for you.**
+**Sushi is Open-source AI job application that autofill and finds jobs from your CV and fills applications on Greenhouse, Lever, Workday and more. Local-first. It finds jobs that fit and fills in the applications for you.**
 
 A local-first desktop app for job seekers. Your CV, your answers and your
 history stay on your computer.
