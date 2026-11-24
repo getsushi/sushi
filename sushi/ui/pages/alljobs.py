@@ -626,15 +626,17 @@ class AllJobsPage(Page):
             return
         if self.app.applies_myself():
             # "I apply myself": open them, nothing more.
-            if len(picked) > 10 and not dialogs.ask(
-                    self, "Open these jobs?",
-                    subject=f"{len(picked)} tabs",
-                    body="Each job opens in its own tab in your browser.",
-                    confirm=f"Open {len(picked)}"):
-                return
-            self.app.open_role_links(picked)
-            self._selected.clear()
-            self._render()
+            def open_them():
+                self.app.open_role_links(picked)
+                self._selected.clear()
+                self._render()
+            if len(picked) > 10:
+                dialogs.confirm(self, "Open these jobs?", open_them,
+                                subject=f"{len(picked)} tabs",
+                                body="Each job opens in its own tab in your browser.",
+                                confirm=f"Open {len(picked)}")
+            else:
+                open_them()
             return
         queued = self.app.autoapply_these(picked)
         if not queued:

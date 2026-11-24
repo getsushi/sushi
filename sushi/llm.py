@@ -69,9 +69,9 @@ class LLM:
             return self._client
         p = self.s.provider
         try:
-            if p == "claude_code":
-                from . import claude_code
-                self._client = claude_code
+            if p in ("claude_code", "codex", "opencode"):
+                from .cli_agents import runtime_for
+                self._client = runtime_for(p)
             elif p == "anthropic":
                 from anthropic import Anthropic
                 self._client = Anthropic(api_key=self.s.api_key)
@@ -97,7 +97,26 @@ class LLM:
     #: The quick model, for short answers where waiting is the cost: a form
     #: question answered in a word or a number does not need the big one,
     #: and on the CLI it came back in seconds rather than half a minute.
-    FAST = {"claude_code": "claude-code:haiku", "anthropic": "claude-haiku-5-5"}
+    FAST = {"claude_code": "claude-code:haiku", "anthropic": "claude-haiku-5-5",
+            "opencode": "opencode:opencode/beam-free"}
+
+    def fast_model(self) -> str:
+        """The quick-answer model: the user's choice, else the default.
+
+        "same" means always the main model (returns "")."""
+        from . import storage
+        chosen = storage.get_setting("fast_model", "").strip()
+        if chosen == "same":
+            return ""
+        # Only a model this provider can run. The setting outlives a switch
+        # of provider, and an OpenCode name sent to Claude Code (or to the
+        # Anthropic API) failed every quick answer.
+        prefix = {"claude_code": "claude-code:", "codex": "codex:",
+                  "opencode": "opencode:"}.get(self.s.provider)
+        known = ("claude-code:", "codex:", "opencode:")
+        fits = (chosen.startswith(prefix) if prefix
+                else not chosen.startswith(known))
+        return (chosen if chosen and fits else "") or self.FAST.get(self.s.provider, "")
 
     def complete(self, prompt: str, *, system: str = "", max_tokens: int = 4000,
                  temperature: float = 0.2, fast: bool = False) -> str:
@@ -106,19 +125,20 @@ class LLM:
             raise LLMError("No API key configured. Open Settings and add one.")
         client = self._get_client()
         try:
-            if self.s.provider == "claude_code":
+            if self.s.provider in ("claude_code", "codex", "opencode"):
                 # The CLI takes one prompt and prints one answer; there is no
                 # temperature to pass and no budget to set, so both are
                 # dropped rather than faked.
+                quick = self.fast_model() if fast else None
                 return client.ask(prompt, system=system or "You are a careful assistant.",
-                                  model=self.FAST["claude_code"] if fast else self.s.model)
+                                  model=quick or self.s.model)
 
             if self.s.provider == "anthropic":
                 # No temperature: the current SDK and models reject it
                 # ("unexpected keyword argument 'temperature'"), which failed
                 # every Anthropic call.
                 resp = client.messages.create(
-                    model=self.FAST["anthropic"] if fast else self.s.model,
+                    model=(self.fast_model() or self.s.model) if fast else self.s.model,
                     max_tokens=max_tokens,
                     system=system or "You are a careful assistant.",
                     messages=[{"role": "user", "content": prompt}],

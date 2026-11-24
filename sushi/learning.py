@@ -1179,7 +1179,14 @@ def open_questions() -> list[str]:
 
     from . import storage
     have = _load_open()
-    left = [q for q in have if not recall_exact(q)]
+    if not storage.get_setting("open_questions_v2", ""):
+        # Recorded by the old form reader, which filed answer options
+        # ("Naukri", "Entrata India LinkedIn Page") as questions. Nothing in
+        # it can be told apart reliably, so it is started again once; real
+        # questions come back on the next form that asks them.
+        have = []
+        storage.set_setting("open_questions_v2", "1")
+    left = [q for q in have if not recall_exact(q) and not is_junk_question(q)]
     if len(left) != len(have):
         try:
             storage.set_setting(_OPEN_KEY, json.dumps(left))
@@ -1270,7 +1277,13 @@ _REPORT_TEXT = re.compile(
 _NOT_A_QUESTION = re.compile(
     r"\[[^\]]*\]|^[a-z_]+\d+$|^_?systemfield|^[a-f0-9-]{16,}$"
     r"|^(?:upload|attach|choose|browse|select)\b.{0,20}$"
-    r"|^(?:upload|attach) (?:file|resume|cv|resume/cv)$", re.I)
+    r"|^(?:upload|attach) (?:file|resume|cv|resume/cv)$"
+    # An option or a placeholder read as the question: Lever's radio
+    # groups and text boxes were, until the reader was fixed, filed as
+    # "Yes", "Custom" and "Type your response".
+    r"|^(?:yes|no|other|custom|none|n/?a|maybe|prefer not to say)\W*$"
+    r"|^(?:type|write|enter) (?:your )?(?:response|answer|here)\b"
+    r"|^(?:please )?(?:select|choose)\W*(?:one|an option|\.\.\.|…)?\W*$", re.I)
 
 
 _REFUSAL = re.compile(r"^i (?:can'?t|cannot|am unable)|\bas an ai\b|without the wording", re.I)
@@ -1355,7 +1368,7 @@ def open_guesses() -> dict[str, str]:
         return {}
     # Listed until the user has said it themselves.
     left = {q: (recall_exact(q) or a) for q, a in have.items()
-            if source_of(q) != "human"}
+            if source_of(q) != "human" and not is_junk_question(q)}
     if len(left) != len(have):
         storage.set_setting(_GUESS_KEY, json.dumps(left))
     return left

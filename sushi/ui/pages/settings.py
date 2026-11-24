@@ -8,7 +8,7 @@ from pathlib import Path
 from PyQt6.QtCore import QUrl, Qt
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (QComboBox, QFileDialog, QHBoxLayout, QLineEdit,
-                             QPlainTextEdit, QStackedWidget,
+                             QPlainTextEdit, QSizePolicy, QStackedWidget,
                              QVBoxLayout, QWidget)
 
 from ... import knowledge, learning, storage
@@ -57,16 +57,19 @@ class SettingsPage(Page):
         navw = QWidget(); navw.setFixedWidth(186); navw.setLayout(navcol)
         root.addWidget(navw)
 
-        self.stack = QStackedWidget()
-        self.stack.addWidget(self._where_section())
-        self.stack.addWidget(self._apply_section())
-        self.stack.addWidget(self._learning_section())
-        self.stack.addWidget(self._model_section())
-        self.stack.addWidget(self._files_section())
-        self.stack.addWidget(self._companies_section())
-        self.stack.addWidget(self._account_section())
+        # One section in the scroll area at a time. They used to share a
+        # stack, which is as tall as its tallest page: "Apply settings" sat
+        # on the Model section's height, a screen of empty scroll under it.
+        self._sections = [self._where_section(), self._apply_section(),
+                          self._learning_section(), self._model_section(),
+                          self._files_section(), self._companies_section(),
+                          self._account_section()]
+        self._holder = QWidget()       # keeps the ones not on show alive
+        for w in self._sections:
+            w.setParent(self._holder)
+            w.hide()
         _, _, scroll = scroll_page()
-        scroll.setWidget(self.stack)
+        self._scroll = scroll
         root.addWidget(scroll, 1)
 
     def on_show(self) -> None:
@@ -75,14 +78,43 @@ class SettingsPage(Page):
         self._load_model()
         self._load_learning()
         self._load_files()
-        self.corpus_lbl.setText(self._corpus_note())
-        if hasattr(self, "jobsdb_lbl"):
-            self.jobsdb_lbl.setText(self._jobs_note())
         self._go(self._section)
+        # The counts read the whole company list, the job database and the
+        # process table — a second or more on a busy laptop. Worked out off
+        # the UI thread, so the page appears at once and the numbers follow.
+        self._load_counts()
+
+    def _load_counts(self) -> None:
+        def work():
+            from ...autofill import orphaned_browsers
+            jobs = self._jobs_note() if hasattr(self, "jobsdb_lbl") else ""
+            return self._corpus_note(), jobs, len(orphaned_browsers())
+
+        def done(res) -> None:
+            corpus, jobs, n = res
+            self.corpus_lbl.setText(corpus)
+            if hasattr(self, "jobsdb_lbl"):
+                self.jobsdb_lbl.setText(jobs)
+            if hasattr(self, "browsers_lbl"):
+                self.browsers_lbl.setText(
+                    f"{n} browser(s) left open by an earlier run." if n
+                    else "No browsers left over.")
+
+        self.app.run(work, on_done=done, on_failed=lambda _m: None)
 
     def _go(self, name: str) -> None:
         self._section = name
-        self.stack.setCurrentIndex(SECTIONS.index(name))
+        idx = SECTIONS.index(name)
+        want = self._sections[idx]
+        if self._scroll.widget() is not want:
+            old = self._scroll.takeWidget()
+            if old is not None:
+                old.hide()
+                old.setParent(self._holder)
+            self._scroll.setWidget(want)
+            want.show()
+        if getattr(self, "_scroll", None) is not None:
+            self._scroll.verticalScrollBar().setValue(0)
         for n, b in self._nav.items():
             b.setObjectName("NavItemActive" if n == name else "NavItem")
             b.style().unpolish(b); b.style().polish(b)
@@ -204,6 +236,7 @@ class SettingsPage(Page):
             f"Closed {n} leftover browser(s)." if n
             else "No leftover browsers to close.")
         self._load_apply()
+        self._load_counts()
 
     def _signin(self, name: str) -> None:
         """Open the apply browser at a sign-in page and hand it to the user."""
@@ -282,12 +315,6 @@ class SettingsPage(Page):
         s = load_settings()
         self.watch_browser.set_state(not s.headless)
         self.autosubmit.set_state(s.autosubmit)
-        if hasattr(self, "browsers_lbl"):
-            from ...autofill import orphaned_browsers
-            n = len(orphaned_browsers())
-            self.browsers_lbl.setText(
-                f"{n} browser(s) left open by an earlier run." if n
-                else "No browsers left over.")
 
     def _set_mode(self, mode: str) -> None:
         a = load_apply_settings(); a.resume_optimization = mode; save_apply_settings(a)
@@ -309,15 +336,19 @@ class SettingsPage(Page):
 
     def _toggle_autosubmit(self, on: bool) -> None:
         if on:
-            if not dialogs.ask(
+            # Off until they say yes: the switch must not read "on" while
+            # the question is still open.
+            self.autosubmit.set_state(False)
+            dialogs.confirm(
                     self, "Let Sushi submit on its own?",
+                    lambda: (storage.set_setting("autosubmit", "1"),
+                             self.autosubmit.set_state(True)),
                     subject="You won't see the form first",
                     body="Sushi fills and sends in one go. A submitted "
                          "application cannot be taken back.",
-                    confirm="Turn it on", danger=True):
-                self.autosubmit.set_state(False)
-                return
-        storage.set_setting("autosubmit", "1" if on else "0")
+                    confirm="Turn it on", danger=True)
+            return
+        storage.set_setting("autosubmit", "0")
 
     # --- what it has learned --------------------------------------------------
 
@@ -646,13 +677,14 @@ class SettingsPage(Page):
         self._load_learning()
 
     def _forget_all(self) -> None:
-        if not dialogs.ask(
-                self, "Forget every learned answer?",
+        dialogs.confirm(
+                self, "Forget every learned answer?", self._forget_all_now,
                 subject=f"{len(learning.bank())} answer(s) go",
                 body="Sushi starts from nothing and relearns as you apply. "
                      "Your profile, applications and settings are untouched.",
-                confirm="Forget them", danger=True):
-            return
+                confirm="Forget them", danger=True)
+
+    def _forget_all_now(self) -> None:
         for a in learning.bank():
             learning.forget(a.key or a.question)
         self._load_learning()
@@ -755,14 +787,16 @@ class SettingsPage(Page):
         """Invalidate the old token. The extension has to be regenerated."""
         from ... import bridge
 
-        if not dialogs.ask(
-                self, "Issue a new token?",
+        dialogs.confirm(
+                self, "Issue a new token?", self._new_token_now,
                 body=("The extension stops working until you generate it "
                       "again and reload it in Chrome. Worth doing if the "
                       "folder has been copied somewhere it should not have "
                       "been."),
-                confirm="Issue a new one"):
-            return
+                confirm="Issue a new one")
+
+    def _new_token_now(self) -> None:
+        from ... import bridge
         bridge.new_token()
         if self._extension_dir().is_dir():
             bridge.build_extension()
@@ -801,8 +835,51 @@ class SettingsPage(Page):
     # --- model --------------------------------------------------------------
 
     def _model_section(self) -> QWidget:
+        """Which model or coding agent, how hard it thinks, and the rest.
+
+        The picker is the one onboarding uses — every option, the setup
+        guide for the command-line agents, the model box editable — so
+        there is one way to choose and it looks the same in both places.
+        """
+        from ..modelpicker import ModelPicker
+        host = QWidget()
+        col = QVBoxLayout(host)
+        col.setContentsMargins(0, 0, 0, 0)
+        col.setSpacing(theme.GAP_MD)
+
+        pick = card("Card")
+        pick.layout().addWidget(h2("Model or coding agent"))
+        self.model_picker = ModelPicker(compact=True)
+        self.model_picker.changed.connect(self._load_model)
+        pick.layout().addWidget(self.model_picker)
+        col.addWidget(pick)
+
+        tune = card("Card")
+        tune.layout().addWidget(h2("How it thinks"))
+        self.effort_seg = Segmented(["Auto", "Low", "Medium", "High", "Max"])
+        self.effort_seg.changed.connect(self._set_effort)
+        row = Block(spacing=5)
+        row.add(label("Reasoning effort", "Eyebrow"), self.effort_seg)
+        tune.layout().addWidget(row)
+        self.effort_help = faint("")
+        tune.layout().addWidget(self.effort_help)
+
+        self.fast_box = QComboBox()
+        self.fast_box.setEditable(True)
+        self.fast_box.setMinimumWidth(280)
+        self.fast_box.activated.connect(lambda _i: self._set_fast())
+        self.fast_box.lineEdit().editingFinished.connect(self._set_fast)
+        row = Block(spacing=5)
+        row.add(label("Model for quick answers", "Eyebrow"), self.fast_box)
+        tune.layout().addWidget(row)
+        tune.layout().addWidget(faint(
+            "Short form answers (a yes/no, a notice period) go to this one: "
+            "faster and cheaper. Pick “Same as main model” to always use the "
+            "main one."))
+        col.addWidget(tune)
+
         c = card("Card")
-        c.layout().addWidget(h2("Model"))
+        c.layout().addWidget(h2("Advanced: set a provider by hand"))
         self.key_status = muted("")
         c.layout().addWidget(self.key_status)
         self.provider_box = QComboBox(); self.provider_box.addItems(["anthropic", "openai", "azure"])
@@ -835,7 +912,22 @@ class SettingsPage(Page):
         c.layout().addWidget(save, 0, Qt.AlignmentFlag.AlignLeft)
         c.layout().addWidget(faint("Tip: put your key in a .env_amm file and Sushi reads it "
                                    "automatically, and no key is stored in the app."))
-        return self._wrap(c)
+        col.addWidget(c)
+        return self._wrap(host)
+
+    _EFFORT_HELP = {
+        "claude_code": "Passed to Claude Code as --effort.",
+        "codex": "Passed to Codex as its reasoning effort (Max is sent as High).",
+        "opencode": "OpenCode chooses this per model; set it inside OpenCode.",
+    }
+
+    def _set_effort(self, value: str) -> None:
+        storage.set_setting("reasoning_effort", "" if value == "Auto" else value.lower())
+        self._load_model()
+
+    def _set_fast(self) -> None:
+        text = self.fast_box.currentText().strip()
+        storage.set_setting("fast_model", "same" if text.startswith("Same as") else text)
 
     @staticmethod
     def _fill(edit: QLineEdit, value: str) -> None:
@@ -850,6 +942,26 @@ class SettingsPage(Page):
 
     def _load_model(self) -> None:
         s = load_settings()
+        if hasattr(self, "effort_seg"):
+            effort = storage.get_setting("reasoning_effort", "") or "auto"
+            self.effort_seg.set_value(effort.capitalize())
+            self.effort_help.setText(self._EFFORT_HELP.get(
+                s.provider, "Used where the provider supports it; ignored otherwise."))
+            if not self.fast_box.hasFocus():
+                from ...llm import LLM
+                from ..modelpicker import providers as _p
+                default = LLM.FAST.get(s.provider, "")
+                rt = _p.runtime_module({"claude_code": "claude_code", "codex": "codex",
+                                        "opencode": "opencode"}.get(s.provider, ""))
+                options = ["Same as main model"] + ([default] if default else []) + (
+                    [m for m in rt.models() if m != default] if rt is not None else [])
+                self.fast_box.blockSignals(True)
+                self.fast_box.clear()
+                self.fast_box.addItems(list(dict.fromkeys(options)))
+                saved = storage.get_setting("fast_model", "")
+                self.fast_box.setCurrentText("Same as main model" if saved == "same"
+                                             else saved or default or "Same as main model")
+                self.fast_box.blockSignals(False)
         if not self.provider_box.hasFocus():
             self.provider_box.setCurrentText(s.provider)
         self._fill(self.model_edit, s.model)

@@ -14,7 +14,7 @@ def _use_project_venv() -> None:
     """
     here = Path(__file__).resolve().parent
     venv_py = here / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
-    if venv_py.exists() and Path(sys.prefix).resolve() != (here / ".venv").resolve():
+    if not getattr(sys, "frozen", False) and venv_py.exists() and Path(sys.prefix).resolve() != (here / ".venv").resolve():
         import subprocess
         sys.exit(subprocess.call([str(venv_py), str(Path(__file__).resolve()), *sys.argv[1:]]))
 
@@ -25,6 +25,11 @@ from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 from sushi import apply_qt_stack_size
 from sushi.config import LOG_PATH, ensure_dirs
+from sushi.setup_agent import refresh_path
+
+# Tools installed since Windows last read PATH, and Homebrew/npm folders a
+# Finder-launched Mac app never sees, become findable from the first check.
+refresh_path()
 from sushi.ui.main_window import MainWindow
 
 

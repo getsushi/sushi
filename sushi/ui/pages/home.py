@@ -120,6 +120,15 @@ def _stat() -> tuple[QFrame, QLabel, QLabel]:
     return box, num, cap
 
 
+def _clickable(box: QFrame, go) -> None:
+    """A stat card that opens what it counts. The number is the way in."""
+    box.setCursor(Qt.CursorShape.PointingHandCursor)
+    def press(event, _go=go):
+        if event.button() == Qt.MouseButton.LeftButton:
+            _go()
+    box.mouseReleaseEvent = press
+
+
 class HomePage(Page):
     title = "Home"
     assistant_key = "dashboard"
@@ -178,7 +187,8 @@ class HomePage(Page):
         b3, self.n_needs, self.c_needs = _stat()
         self.c_matches.setText("New matches")
         self.c_needs.setText("Need your input")
-        for b in (b1, b2, b3):
+        for b, where in ((b1, "Matches"), (b2, "Applications"), (b3, "Applications")):
+            _clickable(b, lambda w=where: self.app.navigate(w))
             stats.addWidget(b, 1)
         lay.addLayout(stats)
 
@@ -203,30 +213,24 @@ class HomePage(Page):
         self.ready.layout().addLayout(rr)
         lay.addWidget(self.ready)
 
-        # --- Needs you | Sent today, side by side ---------------------------
-        cols = QHBoxLayout()
-        cols.setSpacing(32)
-        left = QVBoxLayout()
-        left.setSpacing(0)
-        left.addWidget(_section_head("Check Sushi's answers",
-                                    "Sushi filled these in. Fix anything wrong, then save."))
-        self.needs_host = QVBoxLayout()
-        self.needs_host.setSpacing(0)
-        left.addLayout(self.needs_host)
-        left.addStretch(1)
-        right = QVBoxLayout()
-        right.setSpacing(0)
-        right.addWidget(_section_head(
+        # --- Sent today ------------------------------------------------------
+        # The questions Sushi asks used to sit here too, beside this list.
+        # Home is the glance — is it on, what went out, what needs me — and
+        # a page of form questions turned it into a to-do list. They live on
+        # Profile now (Saved answers), where answering them belongs.
+        self.needs_box = QWidget()
+        self.needs_box.hide()
+        self.needs_host = QVBoxLayout(self.needs_box)
+        cols = QVBoxLayout()
+        cols.setSpacing(0)
+        cols.addWidget(_section_head(
             "Sent today", action=button("See all", "Link",
                                         lambda: self.app.navigate("Applications"))))
         self.sent_host = QVBoxLayout()
         self.sent_host.setSpacing(0)
-        right.addLayout(self.sent_host)
-        right.addStretch(1)
-        cols.addLayout(left, 3)
-        cols.addLayout(right, 2)
+        cols.addLayout(self.sent_host)
         lay.addLayout(cols)
-        self._cols = cols
+        self._cols = None
         lay.addStretch(1)
 
         self.app.autoapply_changed.connect(lambda *_: self._render_mode())
@@ -259,9 +263,11 @@ class HomePage(Page):
     def _render_mode(self) -> None:
         cfg = load_autoapply()
         on = bool(cfg.enabled)
-        self.switch.blockSignals(True)
-        self.switch.setChecked(on)
-        self.switch.blockSignals(False)
+        # set_state, not setChecked under blockSignals: the knob is moved by
+        # the toggled signal, so blocking it left the title saying "on" over
+        # a switch drawn off whenever the title-bar flame armed it.
+        if self.switch.isChecked() != on or self.switch.get_travel() != float(on):
+            self.switch.set_state(on)
         self.cap.blockSignals(True)
         self.cap.setValue(cfg.daily_cap)
         self.cap.blockSignals(False)
@@ -344,6 +350,8 @@ class HomePage(Page):
     PAGE = 5
 
     def _render_needs(self, animate: bool = True) -> None:
+        if not self.needs_box.isVisible():
+            return      # not on Home any more; see build()
         self._clear(self.needs_host)
         guesses = self._guesses()
         taken = {q for q, _ in guesses}
@@ -448,7 +456,7 @@ class HomePage(Page):
         shrink.setDuration(240)
         shrink.setStartValue(w.height())
         shrink.setEndValue(0)
-        shrink.setEasingCurve(QEasingCurve.Type.InCubic)
+        shrink.setEasingCurve(QEasingCurve.Type.OutCubic)
         group.addAnimation(fade)
         group.addAnimation(shrink)
         group.finished.connect(then)
@@ -550,9 +558,7 @@ class HomePage(Page):
 
     def _toggle(self, on: bool) -> None:
         if on and self.app.applies_myself():
-            self.switch.blockSignals(True)
-            self.switch.setChecked(False)
-            self.switch.blockSignals(False)
+            self.switch.set_state(False)
             self.app.set_status(self.app._insane_blocked_note())
             return
         cfg = load_autoapply()
@@ -563,6 +569,11 @@ class HomePage(Page):
         self.app.refresh_chrome()
         if on:
             self.app.start_autoapply()
+            if not self.app.autoapplying():
+                # Refused (no CV, no model): do not leave it saved as on.
+                cfg.enabled = False
+                save_autoapply(cfg)
+                self.app.refresh_chrome()
         else:
             self.app.stop_autoapply("Paused. Nothing new will start.")
         self._render_mode()

@@ -480,7 +480,8 @@ QPushButton:disabled {{ color: {FAINT}; background: {SURFACE_2}; border-color: {
 
 QPushButton#Primary {{ background: transparent; color: {ACCENT_DEEP}; border: 1px solid {ACCENT}; font-weight: 500; }}
 QPushButton#Primary:hover {{ background: {ACCENT_SOFT}; border-color: {ACCENT_HOVER}; }}
-QPushButton#Primary:disabled {{ background: {SURFACE_3}; border-color: {LINE}; color: {FAINT}; }}
+QPushButton#Primary:pressed {{ background: {ACCENT_SOFT}; border-color: {ACCENT_DEEP}; padding-top: 1px; }}
+QPushButton#Primary:disabled {{ background: transparent; border-color: {LINE_2}; color: {FAINT}; }}
 
 QPushButton#Accent {{ background: {ACCENT}; color: {ACCENT_INK}; border: 1px solid {ACCENT}; font-weight: 600; }}
 QPushButton#Accent:hover {{ background: {ACCENT_HOVER}; border-color: {ACCENT_HOVER}; }}
@@ -493,6 +494,7 @@ QPushButton#Lime:hover {{ background: #E4E9D2; }}
 
 QPushButton#Ghost {{ background: transparent; border: none; color: {MUTED}; padding: 8px 12px; }}
 QPushButton#Ghost:hover {{ color: {INK}; background: {SURFACE_2}; border-radius: {R_BTN}px; }}
+QPushButton#Ghost:pressed {{ color: {INK}; background: {SURFACE_3}; border-radius: {R_BTN}px; }}
 QPushButton#Ghost:disabled {{ color: {LINE_3}; background: transparent; }}
 /* The confirm on a dialog that cannot be undone — submitting an application,
    emptying the answer bank. Solid rather than the outlined Danger above,
@@ -511,6 +513,7 @@ QPushButton#Chip:hover {{ background: {SURFACE_2}; color: {INK}; }}
    disabled Chip kept its full-contrast ink and read as pressable. Both of
    Manual apply's "Open…" buttons shipped looking live with nothing to
    open. Same for Link, for the same reason. */
+QPushButton#Chip:pressed {{ background: {SURFACE_3}; color: {INK}; }}
 QPushButton#Chip:disabled {{ color: {LINE_3}; background: {SURFACE_2}; border-color: {LINE}; }}
 QPushButton#ChipActive:disabled {{ color: {LINE_3}; background: {SURFACE_2}; border-color: {LINE}; }}
 QPushButton#ChipActive {{ background: {ACCENT_SOFT}; border: 1px solid {ACCENT_LINE}; border-radius: {R_CHIP}px; padding: {_PAD_CHIP}px 14px; min-height: {H_CHIP - 2 * _PAD_CHIP - 2}px; color: {ACCENT_DEEP}; font-size: {SIZE_SMALL}px; font-weight: 600; }}

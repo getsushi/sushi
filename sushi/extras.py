@@ -385,14 +385,24 @@ def role_from_url(url: str, profile: Profile | None = None,
         except Exception:
             pass
 
-    if not title and not description:
+    if not title:
         try:
             html = fetch_text(url)
-            # crude <title> grab, good enough to label the card
-            if m := re.search(r"<title[^>]*>(.*?)</title>", html, re.I | re.S):
-                title = re.sub(r"\s+", " ", m.group(1)).strip()[:120]
         except Exception:
-            pass
+            html = ""
+        # A company careers site that embeds Greenhouse (Airbnb's does):
+        # the board and the job number give the exact posting, title and
+        # location included, instead of whatever the page's <title> says.
+        gh = _greenhouse_behind(html, url)
+        if gh:
+            ats, token, title, location = gh
+        if not title and html:
+            if m := re.search(r"<title[^>]*>(.*?)</title>", html, re.I | re.S):
+                title = re.sub(r"\s+", " ", m.group(1)).strip()[:160]
+        if html and not company:
+            company = _site_name(html)
+        title, from_title = _clean_title(title)
+        company = company or from_title
 
     # The posting itself. Without it Manual apply showed an empty panel under
     # "The posting", the match score was computed from a job title alone, and
@@ -406,13 +416,80 @@ def role_from_url(url: str, profile: Profile | None = None,
     if not company and token:
         company = company_from_token(token)
 
-    role = Role(company=company or _host(url), title=title or "Pasted job",
+    role = Role(company=company or _company_from_host(url), title=title or "Pasted job",
                 location=location, url=url, ats=ats, token=token,
                 description=description[:_MAX_DESCRIPTION])
     if profile:
         role.score, role.reasons = score_role(role, profile)
         role.match = match_percent(role, profile)
     return role
+
+
+def _greenhouse_behind(html: str, url: str):
+    """(ats, token, title, location) for a page embedding Greenhouse, or None."""
+    from urllib.parse import parse_qs, urlparse
+    m = re.search(r"greenhouse\.io/embed/job_(?:board|app)[^\"'<>\s]*?[?&]for=([\w-]+)",
+                  html or "", re.I)
+    if not m:
+        return None
+    token = m.group(1)
+    page = urlparse(url)
+    jid = (parse_qs(page.query).get("gh_jid") or [""])[0]
+    if not jid:
+        nums = re.findall(r"(?<!\d)(\d{6,})(?!\d)", page.path)
+        jid = nums[-1] if nums else ""
+    if not jid:
+        return None
+    try:
+        import json as _json
+        d = _json.loads(fetch_text(
+            f"https://boards-api.greenhouse.io/v1/boards/{token}/jobs/{jid}"))
+    except Exception:
+        return None
+    return ("greenhouse", token, str(d.get("title") or ""),
+            str((d.get("location") or {}).get("name") or ""))
+
+
+def _site_name(html: str) -> str:
+    m = re.search(r'<meta[^>]+property=["\']og:site_name["\'][^>]+content=["\']([^"\']+)',
+                  html or "", re.I)
+    if not m:
+        return ""
+    import html as _html
+    name = _html.unescape(m.group(1)).strip()
+    # "Careers at Airbnb", "Airbnb Careers": the company, not the site.
+    name = re.sub(r"^(?:careers|jobs) (?:at|@) ", "", name, flags=re.I)
+    name = re.sub(r" (?:careers|jobs)$", "", name, flags=re.I)
+    return name[:60]
+
+
+#: " - Careers at Airbnb", " | Airbnb Careers", " – Jobs at Acme".
+_TITLE_TAIL = re.compile(
+    r"\s*[-|–—:]\s*(?:careers?|jobs?)\s+(?:at|@)\s+(?P<co1>[^|–—-]+)$"
+    r"|\s*[-|–—:]\s*(?P<co2>[^|–—-]+?)\s+(?:careers?|jobs?)$", re.I)
+
+
+def _clean_title(title: str) -> tuple[str, str]:
+    """A page <title> as a job title, and the company it named, if any."""
+    import html as _html
+    t = re.sub(r"\s+", " ", _html.unescape(title or "")).strip()
+    m = _TITLE_TAIL.search(t)
+    if not m:
+        return t, ""
+    co = (m.group("co1") or m.group("co2") or "").strip()
+    return t[:m.start()].strip(), co
+
+
+def _company_from_host(url: str) -> str:
+    """"careers.airbnb.com" -> "Airbnb": the name, not the address."""
+    host = _host(url)
+    parts = [p for p in host.split(".") if p not in
+             ("careers", "jobs", "apply", "boards", "join", "work", "www")]
+    # Two-part endings ("acme.co.uk", "acme.com.au") end in two labels.
+    if len(parts) >= 3 and parts[-2] in ("co", "com", "org", "net", "ac", "gov"):
+        parts = parts[:-1]
+    core = parts[-2] if len(parts) >= 2 else (parts[0] if parts else host)
+    return core.replace("-", " ").title() if core else host
 
 
 def _host(url: str) -> str:

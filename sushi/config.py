@@ -152,11 +152,11 @@ class Settings:
     def llm_enabled(self) -> bool:
         if self.provider == "azure":
             return bool(self.api_key and self.azure_base_url and self.azure_deployment)
-        if self.provider == "claude_code":
-            # Credentials belong to Claude Code, not to us. Asking for a key
+        if self.provider in CLI_PROVIDERS:
+            # Credentials belong to the CLI, not to us. Asking for a key
             # here would be asking for one that does not exist.
-            from . import claude_code
-            return claude_code.available()
+            from .cli_agents import runtime_for
+            return runtime_for(self.provider).available()
         return bool(self.api_key)
 
 
@@ -167,13 +167,20 @@ DEFAULT_MODELS = {
     "openai": "gpt-4o",
     "azure": "",  # deployment name is user-specific
     "claude_code": "claude-code:sonnet",
+    "codex": "codex:default",
+    "opencode": "opencode:opencode/beam-free",
 }
+
+#: Providers that are a signed-in CLI on this machine rather than an API.
+CLI_PROVIDERS = ("claude_code", "codex", "opencode")
 
 ENV_KEYS = {
     "anthropic": "ANTHROPIC_API_KEY",
     "openai": "OPENAI_API_KEY",
     "azure": "AZURE_OPENAI_API_KEY",
     "claude_code": "",  # the CLI holds its own credentials
+    "codex": "",
+    "opencode": "",
 }
 
 
@@ -195,12 +202,14 @@ def load_settings() -> Settings:
     # Key: DB → env file → process env. Record source, not value.
     db_key = get_setting("api_key", "").strip()
     key, key_source = "", ""
-    if provider == "claude_code":
+    if provider in CLI_PROVIDERS:
         # There is no key to resolve, and no file to go looking in: the CLI
         # signs its own requests. Say so, so Settings can show where this is
         # coming from rather than "key from settings".
-        from . import claude_code
-        key, key_source = claude_code.PLACEHOLDER_KEY, "Claude Code subscription"
+        from .cli_agents import runtime_for
+        name = {"claude_code": "Claude Code", "codex": "Codex",
+                "opencode": "OpenCode"}[provider]
+        key, key_source = runtime_for(provider).PLACEHOLDER_KEY, f"{name} sign-in"
     elif db_key:
         key, key_source = db_key, "settings"
     elif env_cfg.ok:

@@ -278,7 +278,7 @@ CLI_STEP_TIMEOUT = 420
 
 def _agent_timeouts(s: Settings) -> dict[str, int]:
     """Timeouts for the agent, where the default is wrong for the backend."""
-    if s.provider != "claude_code":
+    if s.provider not in ("claude_code", "codex", "opencode"):
         return {}
     return {"llm_timeout": CLI_LLM_TIMEOUT, "step_timeout": CLI_STEP_TIMEOUT}
 
@@ -290,15 +290,15 @@ def _chat_model(s: Settings) -> Any:
     except ImportError as e:
         raise AutofillError("browser-use is not installed. Run: pip install browser-use") from e
 
-    if s.provider == "claude_code":
+    if s.provider in ("claude_code", "codex", "opencode"):
         # browser-use speaks the OpenAI protocol and nothing else, so the
-        # Claude Code CLI gets fronted by a loopback server that does. Start
-        # it here rather than at launch: it costs nothing until used, and
-        # this is the only place in the app that needs it.
-        from . import claude_code
-        return ChatOpenAI(model=s.model or claude_code.best_model(),
-                          api_key=claude_code.PLACEHOLDER_KEY,
-                          base_url=claude_code.ensure_running(),
+        # CLI gets fronted by a loopback server that does. Started here
+        # rather than at launch: it costs nothing until used.
+        from .cli_agents import runtime_for
+        rt = runtime_for(s.provider)
+        return ChatOpenAI(model=s.model or rt.best_model(),
+                          api_key=rt.PLACEHOLDER_KEY,
+                          base_url=rt.ensure_running(),
                           temperature=None)
 
     if s.provider == "anthropic":
@@ -1740,9 +1740,47 @@ async def _embedded_form(session: Any) -> str:
     try:
         raw = await _evaluate(
             session, _EMBED_JS.replace("HOSTS_JSON", json.dumps(list(_ATS_HOSTS))))
-        return json.loads(raw) if raw else ""
+        src = json.loads(raw) if raw else ""
     except Exception:                                   # noqa: BLE001
         return ""
+    if src and _GH_BOARD_EMBED.search(src):
+        try:
+            here = await _evaluate(session, "location.href") or ""
+        except Exception:                               # noqa: BLE001
+            here = ""
+        return greenhouse_form_for(src, here)
+    return src
+
+
+#: Greenhouse's embedded *job list* — "every opening at Airbnb" — as opposed
+#: to one job's form (``embed/job_app``).
+_GH_BOARD_EMBED = re.compile(r"greenhouse\.io/embed/job_board(?!_)", re.I)
+
+
+def greenhouse_form_for(board_src: str, page_url: str) -> str:
+    """This job's Greenhouse form, from a careers page that embeds the list.
+
+    Airbnb's job page embeds the whole board and shows the form behind an
+    "Application" tab. Going to the embed opened a list of every vacancy,
+    with no form on it, and the run sat there: "stuck on filling it in".
+    The company is the embed's ``for=``, the job is the number in the page's
+    own address (``/positions/8394382/``, ``?gh_jid=8394382``). Without both
+    there is no form to go to, and "" says so rather than open the list.
+    """
+    from urllib.parse import parse_qs, urlparse
+    company = (parse_qs(urlparse(board_src).query).get("for") or [""])[0]
+    page = urlparse(page_url or "")
+    jid = (parse_qs(page.query).get("gh_jid") or [""])[0]
+    if not jid:
+        found = re.findall(r"(?<!\d)(\d{6,})(?!\d)", page.path)
+        jid = found[-1] if found else ""
+    if not (company and jid):
+        return ""
+    # The embed address, not the hosted page: a company that runs its own
+    # careers site (Airbnb does) has the hosted page redirect back to it,
+    # which is the page with no form on it that we started from.
+    return (f"https://job-boards.greenhouse.io/embed/job_app"
+            f"?for={company}&token={jid}")
 
 
 async def _follow_apply(session: Any) -> bool:

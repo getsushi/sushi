@@ -375,9 +375,15 @@ class ProfilePage(Page):
 
     def _load_open_questions(self) -> None:
         from ... import learning
-        self.open_q.set_questions(learning.open_questions())
+        open_qs = learning.open_questions()
+        self.open_q.set_questions(open_qs)
         guesses = learning.open_guesses()
         self.guess_q.set_questions(list(guesses), guesses)
+        # The questions left Home; the tab says they are here, and how many.
+        n = len(open_qs) + len(guesses)
+        tab = self.subtabs._buttons.get("Profile Details")
+        if tab is not None:
+            tab.setText(f"Details & answers · {n}" if n else "Details & answers")
 
     def _shown(self) -> Profile | None:
         """The profile this page is entitled to draw.

@@ -34,7 +34,8 @@ from ..assistant import AssistantContext, parse_pairs
 from ..config import DATA_DIR, ensure_dirs, load_settings
 from ..cv import SUPPORTED, build_profile, extract_text
 from ..extras import (RESUME_MODE_WORDS, autoapply_preview,
-                      load_apply_settings, load_autoapply, note_applied)
+                      load_apply_settings, load_autoapply, note_applied,
+                      save_autoapply)
 from ..letters import render_pdf, write_letter
 from ..llm import LLM
 from ..models import Profile, Role
@@ -243,6 +244,18 @@ class MainWindow(QWidget):
         from .. import discovery
         threading.Thread(target=discovery.load_companies, daemon=True,
                          name="sushi-warm-corpus").start()
+        # Ask each coding-agent CLI for its models now, off the UI thread:
+        # asked the first time someone picks it, that was up to 20 seconds
+        # of frozen window. Cached for the session afterwards.
+        def _warm_models():
+            from ..cli_agents import real_models
+            for prov in ("claude_code", "codex", "opencode"):
+                try:
+                    real_models(prov)
+                except Exception:               # noqa: BLE001
+                    pass
+        threading.Thread(target=_warm_models, daemon=True,
+                         name="sushi-warm-models").start()
         try:
             n = storage.reset_interrupted()
             if n:
@@ -644,8 +657,18 @@ class MainWindow(QWidget):
         self.refresh_chrome()
         if cfg.enabled:
             self.start_autoapply()
+            if not self._autoapply_armed:
+                # Refused (no CV, no model): the saved flag goes back too,
+                # or every surface reading it would say "on" over nothing.
+                cfg.enabled = False
+                save_autoapply(cfg)
+                self.refresh_chrome()
         else:
             self.stop_autoapply("Disarmed.")
+        # Every surface re-reads the saved state from this one signal: the
+        # Home card, the Insane page and the footer. Some paths through
+        # start/stop do not emit it, so it is sent here unconditionally.
+        self.autoapply_changed.emit(self._autoapply_armed, self.status_text())
 
     def _set_model(self, name: str) -> None:
         storage.set_setting("model", name)
@@ -1711,15 +1734,14 @@ class MainWindow(QWidget):
                 "It opens a browser, fills the form, and stops there for you "
                 "to check before anything is sent.")
         resume = RESUME_MODE_WORDS.get(asettings.resume_optimization, "")
-        if not dialogs.ask(
+        dialogs.confirm(
                 self, "Apply with Sushi?",
+                lambda: self.begin_apply(role, watch=watch, announce=True),
                 subject=role.title,
                 sub=f"{role.company}" + (f" · {role.location}" if role.location else ""),
                 body=what + (f"\n\nResume: {resume}." if resume else ""),
                 confirm="Submit it" if submit else "Fill it in",
-                danger=submit):
-            return
-        self.begin_apply(role, watch=watch, announce=True)
+                danger=submit)
 
     # --- the Fill button on a page -----------------------------------------
 
@@ -2096,15 +2118,21 @@ class MainWindow(QWidget):
         queue is the feed in match order, down to the daily cap.
         """
         cfg = load_autoapply()
-        if not self._profile:
-            self.set_status("Insane mode needs your CV first. Profile → Read my CV.")
-            self.autoapply_changed.emit(False, "Needs your CV first.")
-            self._rows_blocked("Needs your CV first. Profile → Read my CV.")
-            return
-        if not self._insane_allowed():
-            self.set_status(self._insane_blocked_note())
-            self.autoapply_changed.emit(False, self._insane_blocked_note())
-            self._rows_blocked(self._insane_blocked_note())
+        if not self._profile or not self._insane_allowed():
+            note = ("Needs your CV first. Profile → Read my CV."
+                    if not self._profile else self._insane_blocked_note())
+            # Refused, so not left saved as on — whichever switch asked.
+            # Every surface draws the saved flag, and an "on" that is not
+            # running was the out-of-sync switch on Home.
+            if cfg.enabled:
+                cfg.enabled = False
+                save_autoapply(cfg)
+            self._autoapply_armed = False
+            self.set_status(note if self._profile else
+                            "Insane mode needs your CV first. Profile → Read my CV.")
+            self.autoapply_changed.emit(False, note)
+            self._rows_blocked(note)
+            self.refresh_chrome()
             return
 
         self._autoapply_armed = True
@@ -2313,11 +2341,10 @@ class MainWindow(QWidget):
         body = "\n".join(lines) + (
             "\n\nSubmit the open forms first if you want them sent. "
             "Finishing closes every browser Sushi opened.")
-        if dialogs.ask(self, "Insane mode is done",
-                       subject=f"{len(self._autoapply_rows)} job(s) worked through",
-                       body=body, confirm="Finish & close browsers",
-                       cancel="Keep them open"):
-            self.finish_autoapply_run()
+        dialogs.confirm(self, "Insane mode is done", self.finish_autoapply_run,
+                        subject=f"{len(self._autoapply_rows)} job(s) worked through",
+                        body=body, confirm="Finish & close browsers",
+                        cancel="Keep them open")
 
     def finish_autoapply_run(self) -> None:
         """End the run: disarm, close Sushi's browsers, clear the list.
@@ -2671,13 +2698,14 @@ class MainWindow(QWidget):
         if waiting:
             body = (f"{waiting} application(s) are marked as needing you. "
                     + body)
-        if not dialogs.ask(
-                self, "Close the browser?",
+        dialogs.confirm(
+                self, "Close the browser?", self._close_browsers_now,
                 subject=f"{n} window{'s' if n > 1 else ''} open",
                 sub="Sushi left them up so you could review and submit.",
                 body=body, confirm="Close it" if n == 1 else "Close them all",
-                danger=True):
-            return
+                danger=True)
+
+    def _close_browsers_now(self) -> None:
         try:
             from .. import autofill
             autofill.close_open_sessions()

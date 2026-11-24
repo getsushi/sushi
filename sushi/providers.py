@@ -59,7 +59,8 @@ class Preset:
 def runtime_module(name: str):
     """The module behind a keyless preset, or ``None``."""
     from . import claude_code, local_llm
-    return {"ollama": local_llm, "claude_code": claude_code}.get(name)
+    from .cli_agents import AGENTS
+    return {"ollama": local_llm, "claude_code": claude_code, **AGENTS}.get(name)
 
 
 #: Ordered by what to recommend first: free and fast, then cheap, then the
@@ -80,6 +81,29 @@ PRESETS: list[Preset] = [
                   "instead. Text-only: no page screenshots.",
         needs_key=False,
         runtime="claude_code",
+    ),
+    Preset(
+        name="Codex",
+        provider="codex",
+        base_url="",
+        model="codex:default",
+        signup="https://developers.openai.com/codex/cli",
+        free="Uses the ChatGPT plan you sign in to Codex with.",
+        cost_note="No extra cost. Spends your ChatGPT plan's Codex limits.",
+        needs_key=False,
+        runtime="codex",
+    ),
+    Preset(
+        name="OpenCode",
+        provider="opencode",
+        base_url="",
+        model="opencode:opencode/beam-free",
+        signup="https://opencode.ai",
+        free="Free models included, or any provider you sign in to.",
+        cost_note="Free on OpenCode's free models. Others bill your own "
+                  "provider account.",
+        needs_key=False,
+        runtime="opencode",
     ),
     Preset(
         name="Groq",

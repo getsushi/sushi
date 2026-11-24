@@ -56,6 +56,19 @@ def models() -> list[str]:
     return [m.get("name", "") for m in data.get("models", []) if m.get("name")]
 
 
+def models_on_disk() -> list[str]:
+    """Models downloaded, read from Ollama's folder: works while it is stopped."""
+    import os
+    from pathlib import Path
+    root = Path(os.environ.get("OLLAMA_MODELS") or Path.home() / ".ollama" / "models")
+    lib = root / "manifests" / "registry.ollama.ai" / "library"
+    try:
+        return [f"{d.name}:{t.name}" for d in lib.iterdir() if d.is_dir()
+                for t in d.iterdir() if t.is_file()]
+    except OSError:
+        return []
+
+
 def best_model(installed: list[str] | None = None) -> str:
     """The most capable installed model, or "" if there are none.
 
@@ -146,3 +159,47 @@ def describe() -> str:
     return (f"{len(have)} local model(s) available, using {pick}"
             + (" (loaded, answers immediately)." if warm_now
                else " (first call will pause while it loads)."))
+
+
+# --- for the setup guide (sushi.ui.cliguide) ---------------------------------
+#
+# Same four steps as the command-line agents, with step 3 being "download a
+# model" instead of "sign in": Ollama has no account, but it does nothing
+# until a model is on disk, and that download is a few GB worth watching.
+import shutil as _shutil
+import sys as _sys
+
+NAME = "Ollama"
+NEEDS_NODE = False
+STEP3 = "Download a model"
+STEP3_HINT = ("Opens a window running “{cmd}”. About 4.7 GB; leave it to "
+              "finish, then press Test it.")
+INSTALL = ("winget install --id Ollama.Ollama -e --accept-source-agreements "
+           "--accept-package-agreements" if _sys.platform == "win32"
+           else "curl -fsSL https://ollama.com/install.sh | sh")
+LOGIN = "ollama pull qwen2.5:7b"
+SITE = "https://ollama.com/download"
+
+
+def installed() -> bool:
+    """The program is on this machine, whether or not a model is pulled."""
+    from .setup_agent import refresh_path
+    if not _shutil.which("ollama"):
+        refresh_path()
+    return bool(_shutil.which("ollama")) or available()
+
+
+def ask(prompt: str, system: str = "", model: str = "") -> str:
+    """One answer from the local model, for the guide's Test button."""
+    model = model or best_model()
+    if not model:
+        raise RuntimeError("No model downloaded yet. Run step 3 first.")
+    msgs = ([{"role": "system", "content": system}] if system else []) + \
+           [{"role": "user", "content": prompt}]
+    req = urllib.request.Request(
+        f"{BASE_URL}/chat/completions",
+        data=json.dumps({"model": model, "messages": msgs}).encode(),
+        headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=180) as resp:
+        data = json.loads(resp.read().decode("utf-8", "replace"))
+    return data["choices"][0]["message"]["content"]

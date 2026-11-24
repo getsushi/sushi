@@ -60,7 +60,8 @@ from .starfield import StarPanel, StarStrip, transparent
 #: is the part of a first run people abandon.
 STEPS = [
     ("Pick a model.",
-     "Sushi needs one to read your CV and fill a form. The free ones first."),
+     "Free with what you have: Claude Code, Codex, OpenCode or Ollama on "
+     "this PC. Pick one and Sushi walks you through the setup."),
     ("Now your CV.",
      "Sushi works everything else out from it: matching, tailoring, filling "
      "forms."),
@@ -256,8 +257,10 @@ class Onboarding(QWidget):
         # and wrong here: the lead is two lines on half these steps, and the
         # overflow was painted straight through the step bar underneath it.
         # A minimum instead, so the band grows for the step that needs it.
-        strip.setMinimumHeight(196)
-        strip.setMaximumHeight(QWIDGETSIZE_MAX)
+        # Fixed at the two-line height. Growing to fit made the band 196px on
+        # one step and 220px on the next, so every Next shifted the whole
+        # page down by a line — the form you were about to read jumped.
+        strip.setFixedHeight(222)
         strip.body.setContentsMargins(40, 14, 16, 28)
         strip.body.setSpacing(12)
 
@@ -751,11 +754,28 @@ class Onboarding(QWidget):
         c = card("Card")
         self.picker = ModelPicker()
         self.picker.changed.connect(self.refresh)
+        # One decision, one button. The picker's own "Use this" made the
+        # first screen a two-step confirm: the free option was already
+        # highlighted, yet Next stayed grey until a second button was found.
+        # Here Next is the confirm.
+        self.picker.use_outer_confirm()
         c.layout().addWidget(self.picker)
         self.model_gate_note = faint("")
         return self._column(
             c, self.model_gate_note,
-            self._nav("Next", lambda: self.go_to(1), back=False, gate="model"))
+            self._nav("Continue", self._next_from_model, back=False, gate="model"))
+
+    def _next_from_model(self) -> None:
+        if self.picker.save():
+            self.go_to(1)
+        elif self.picker._pending is not None:
+            # A pasted key is being checked; carry on once it passes.
+            def onward():
+                self.picker.changed.disconnect(onward)
+                self.go_to(1)
+            self.picker.changed.connect(onward)
+        else:
+            self.refresh()
 
     # --- the door ---------------------------------------------------------------
 
@@ -797,6 +817,7 @@ class Onboarding(QWidget):
         sky.body.addSpacing(28)
 
         go = DoorButton("Open Sushi", self._done)
+        self.door_go = go
         go.setMinimumWidth(216)
         # No drop shadow. It was meant to lift the button off the sky and
         # instead smeared a dark grey halo down one side of it: a soft black
@@ -810,6 +831,25 @@ class Onboarding(QWidget):
         hrow.addWidget(go)
         hrow.addStretch(1)
         sky.body.addWidget(holder)
+        sky.body.addSpacing(10)
+
+        # The wireframe's last question: who presses Submit. Manual is the
+        # default and the big button; Insane Mode is one deliberate click.
+        self.door_insane = button("Open with Insane Mode on", "Ghost",
+                                  self._done_insane)
+        self.door_insane.setStyleSheet(
+            f"QPushButton{{background:transparent;border:1px solid #55FFF8F4;"
+            f"border-radius:20px;color:{theme.SKY_INK};font-size:13px;"
+            f"font-weight:600;padding:9px 20px;}}"
+            f"QPushButton:hover{{background:#22FFF8F4;}}")
+        sky.body.addWidget(self.door_insane, 0, Qt.AlignmentFlag.AlignHCenter)
+        sky.body.addSpacing(8)
+        note = QLabel("Insane Mode applies for you, up to a daily limit. "
+                      "You can switch any time from Home.")
+        note.setStyleSheet(theme.on_sky(12, theme.SKY_INK_BODY))
+        note.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        sky.body.addWidget(note, 0, Qt.AlignmentFlag.AlignHCenter)
+        self.door_insane_note = note
         sky.body.addSpacing(14)
 
         back = button("Back a step", "Ghost", lambda: self.go_to(self._DOOR - 1))
@@ -851,13 +891,35 @@ class Onboarding(QWidget):
         self.stack.setVisible(not door)
         self.door.setVisible(door)
         if not door:
+            changed = self.stack.currentIndex() != self._step
             self.stack.setCurrentIndex(self._step)
+            if changed and self.isVisible():
+                self._fade_in(self.stack.currentWidget())
             title, lead = STEPS[self._step]
             self.eyebrow.setText(f"STEP {self._step + 1} OF {len(STEPS)}")
             self.title.setText(title)
             self.lead.setText(lead)
             self.progress.set_step(self._step)
         self.refresh()
+
+    def _fade_in(self, w: QWidget) -> None:
+        """A step arriving: 220ms opacity, ease-out. Rare, so it may move;
+        opacity only, so nothing reflows while it plays."""
+        from PyQt6.QtCore import QEasingCurve, QPropertyAnimation
+        from PyQt6.QtWidgets import QGraphicsOpacityEffect
+        eff = QGraphicsOpacityEffect(w)
+        eff.setOpacity(0.0)
+        w.setGraphicsEffect(eff)
+        a = QPropertyAnimation(eff, b"opacity", w)
+        a.setDuration(220)
+        a.setStartValue(0.0)
+        a.setEndValue(1.0)
+        a.setEasingCurve(QEasingCurve.Type.OutCubic)
+        # Dropped at the end: a lingering effect makes Qt render the whole
+        # step offscreen on every repaint, which is what blurs text.
+        a.finished.connect(lambda: w.setGraphicsEffect(None))
+        a.start()
+        self._step_anim = a
 
     def _skip(self) -> None:
         """"Skip this" moves on rather than bailing out entirely.
@@ -927,11 +989,14 @@ class Onboarding(QWidget):
 
         # The two gates. Each says what it is waiting for rather than leaving
         # a dead button to be worked out.
-        self._gates["model"].setEnabled(ready)
+        # Always pressable: Continue saves the highlighted option. If that
+        # option cannot be used here (no key, not installed) the picker says
+        # why under it and the step stays.
+        self._gates["model"].setEnabled(True)
         self.model_gate_note.setText(
             "" if ready else
-            "Pick one above to carry on. Sushi can't read a CV or fill a "
-            "form without a model, and the first three are free.")
+            "Not sure? Already pay for Claude or ChatGPT: pick Claude Code or "
+            "Codex. Neither: OpenCode is free, or Ollama if your PC is strong.")
         self._gates["cv"].setEnabled(p is not None)
         self.cv_gate_note.setText(
             "" if p is not None else
@@ -969,10 +1034,26 @@ class Onboarding(QWidget):
             lead = ("No CV yet, so Sushi has nothing to match against. You can "
                     "add one any time from Profile and it will start looking.")
         self.door_lead.setText(lead)
+        can = bool(p) and load_settings().llm_enabled and not self.app.applies_myself()
+        self.door_insane.setVisible(can)
+        self.door_insane_note.setVisible(can)
 
     def _done(self) -> None:
         storage.set_setting("onboarded", "1")
         self.finished.emit()
+
+    def _done_insane(self) -> None:
+        from ..extras import load_autoapply, save_autoapply
+        self._done()
+        if self.app.applies_myself() or not load_settings().llm_enabled:
+            return
+        cfg = load_autoapply()
+        cfg.enabled = True
+        save_autoapply(cfg)
+        # After the window has swapped to the app, so Home paints it on.
+        QTimer.singleShot(300, self.app.start_autoapply)
+        QTimer.singleShot(350, lambda: self.app.autoapply_changed.emit(
+            self.app.autoapplying(), "Insane mode armed."))
 
     # --- drop a CV straight onto the screen ------------------------------------
 

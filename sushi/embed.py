@@ -52,6 +52,25 @@ BASE_URL = f"https://huggingface.co/{MODEL_REPO}/resolve/main/"
 DIMS = 384
 
 
+def _machine() -> str:
+    """The CPU architecture, cheaply and once.
+
+    ``platform.machine()`` on Windows asks WMI, about 0.15s a call, and the
+    Settings page called it twice on every open.
+    """
+    global _MACHINE
+    if _MACHINE is None:
+        import os
+        import platform
+        _MACHINE = (os.environ.get("PROCESSOR_ARCHITEW6432")
+                    or os.environ.get("PROCESSOR_ARCHITECTURE")
+                    or platform.machine() or "").lower()
+    return _MACHINE
+
+
+_MACHINE: str | None = None
+
+
 def _model_file() -> str:
     """Which build of the weights this machine wants.
 
@@ -63,9 +82,7 @@ def _model_file() -> str:
     download, and it fails at load time where there is nothing to say about
     it.
     """
-    import platform
-
-    machine = (platform.machine() or "").lower()
+    machine = _machine()
     if machine in {"amd64", "x86_64", "x64"}:
         return "onnx/model_quint8_avx2.onnx"
     if machine in {"arm64", "aarch64"}:

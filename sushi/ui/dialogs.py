@@ -213,6 +213,39 @@ def ask(parent, title: str, *, subject: str = "", sub: str = "",
     return d.exec() == QDialog.DialogCode.Accepted
 
 
+def confirm(parent, title: str, on_yes, *, on_no=None, subject: str = "",
+            sub: str = "", body: str = "", confirm: str = "Continue",
+            cancel: str = "Not now", danger: bool = False) -> None:
+    """Ask without freezing the app. ``on_yes`` runs if they say yes.
+
+    ``ask`` is ``exec()``: the whole window refuses every click until the
+    question is answered. In the corner, looking like a notice, that read as
+    the app having hung ("it doesn't let me click anywhere"). This one is
+    shown and left: the app keeps working, and the action happens only
+    when its button is pressed. One question at a time — a new one replaces
+    the last, which counts as "not now".
+    """
+    d = SushiDialog(parent, title, subject, sub, body, confirm, cancel, danger)
+    d.setModal(False)
+    d.setWindowModality(Qt.WindowModality.NonModal)
+    d.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+    host = parent.window() if parent is not None else None
+    old = getattr(host, "_sushi_question", None) if host is not None else None
+    if old is not None:
+        try:
+            old.reject()
+        except RuntimeError:
+            pass
+    if host is not None:
+        host._sushi_question = d
+    d.accepted.connect(on_yes)
+    if on_no is not None:
+        d.rejected.connect(on_no)
+    d.show()
+    d.raise_()
+    d.activateWindow()
+
+
 def tell(parent, title: str, *, subject: str = "", sub: str = "",
          body: str = "", button_text: str = "Got it") -> None:
     """Say something that has already happened. One button, no question.

@@ -856,11 +856,17 @@ def plan_fill(fields: Iterable[dict], profile: Profile, *,
         # produced "Bristol", matched none of the three options offered and
         # was handed back as unanswerable — with "Remote (UK)" in the bank.
         value, source = "", ""
-        exact = learning.recall_exact(label)
+        # Facts about the person are the profile's, full stop. A saved answer
+        # to "First Name" is only ever an old copy of it, and the bank still
+        # held a test run's "M." / "moazam.test@example.com" — which went
+        # into a real Airbnb form over the profile's actual name and email.
+        rule = match_rule(label, ftype)
+        if rule in _IDENTITY and answers.get(rule) and rule not in guessed_keys:
+            value, source = answers[rule], "profile"
+        exact = "" if value else learning.recall_exact(label)
         if exact:
             value, source = exact, "bank"
         if not value:
-            rule = match_rule(label, ftype)
             if rule and answers.get(rule):
                 value, source = answers[rule], (
                     "guess" if rule in guessed_keys else "profile")
@@ -927,6 +933,11 @@ def decline_option(options) -> str:
         if o and _DECLINE.search(o) and not _PLACEHOLDER.match(o):
             return o
     return ""
+
+
+#: Rules whose answer is a fact about the person, which the profile owns.
+_IDENTITY = {"first_name", "last_name", "full_name", "email", "phone",
+             "linkedin", "github", "website"}
 
 
 _YES = re.compile(r"^\s*(y|yes|true|1|authoris|authoriz)", re.I)

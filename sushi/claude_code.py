@@ -80,7 +80,9 @@ def best_model(installed: list[str] | None = None) -> str:
 
 
 def models() -> list[str]:
-    return [f"{PREFIX}{a}" for a in ALIASES]
+    """The aliases this CLI names in its own --help, latest of each family."""
+    from .cli_agents import real_models
+    return real_models("claude_code") or [f"{PREFIX}{a}" for a in ALIASES]
 
 
 def _alias(model: str) -> str:
@@ -101,6 +103,9 @@ def _run(prompt: str, model: str = "", timeout: int = TIMEOUT) -> dict:
     alias = _alias(model)
     if alias:
         cmd += ["--model", alias]
+    effort = reasoning_effort()
+    if effort:
+        cmd += ["--effort", effort]
     try:
         proc = subprocess.run(
             cmd, input=prompt, capture_output=True, text=True,
@@ -211,6 +216,11 @@ def _completion(text: str, model: str) -> dict:
 
 
 def _handler_class():
+    return handler_for(ask, models, best_model, "claude-code")
+
+
+def handler_for(ask_fn, models_fn, best_fn, owner: str):
+    """The loopback OpenAI-shaped handler, for any CLI with an ``ask``."""
     import http.server
 
     class Handler(http.server.BaseHTTPRequestHandler):
@@ -236,8 +246,8 @@ def _handler_class():
         def do_GET(self):          # noqa: N802
             if self.path.rstrip("/").endswith("/models"):
                 self._send({"object": "list", "data": [
-                    {"id": m, "object": "model", "owned_by": "claude-code"}
-                    for m in models()]})
+                    {"id": m, "object": "model", "owned_by": owner}
+                    for m in models_fn()]})
                 return
             self._send({"error": {"message": "not found"}}, 404)
 
@@ -252,7 +262,7 @@ def _handler_class():
                 self._send({"error": {"message": "not found"}}, 404)
                 return
 
-            model = payload.get("model") or best_model()
+            model = payload.get("model") or best_fn()
             system, prompt = _flatten(payload.get("messages") or [])
             if payload.get("response_format") or payload.get("tools"):
                 # browser-use asks for JSON. Say so explicitly: the CLI is a
@@ -261,8 +271,8 @@ def _handler_class():
                 system = (system + "\n\nReply with JSON only. No prose, no "
                                    "code fences, no explanation.").strip()
             try:
-                text = ask(prompt, system=system, model=model)
-            except ClaudeCodeError as exc:
+                text = ask_fn(prompt, system=system, model=model)
+            except RuntimeError as exc:
                 self._send({"error": {"message": str(exc)}}, 502)
                 return
             self._send(_completion(_unfence(text), model))
@@ -336,3 +346,20 @@ def describe() -> str:
     return ("Claude Code on this machine, no API key needed. About 1.4p a "
             "call once warm; good for reading a CV and writing answers, "
             "slow and costly for driving the browser agent.")
+
+
+#: For the setup guide (see sushi.ui.cliguide): what this is, how to get it.
+NAME = "Claude Code"
+INSTALL = "npm install -g @anthropic-ai/claude-code"
+LOGIN = "claude auth login"
+SITE = "https://claude.com/code"
+
+
+def reasoning_effort() -> str:
+    """The user's reasoning-effort setting, or "" for the CLI's default."""
+    try:
+        from . import storage
+        v = storage.get_setting("reasoning_effort", "").strip().lower()
+    except Exception:                                   # noqa: BLE001
+        return ""
+    return v if v in ("low", "medium", "high", "xhigh", "max") else ""
